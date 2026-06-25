@@ -1,0 +1,4 @@
+coloredlogs
+libusb
+pygments
+pyusb
