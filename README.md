@@ -42,7 +42,7 @@ options:
 ## Credits
 - [CVE-2021-30327](https://nvd.nist.gov/vuln/detail/cve-2021-30327) ```This is the CVE which Katana exploits```
 - Iskuri (Christopher Wade) ```Reported CVE-2021-30327 to Qualcomm```
-- Seamus Burke & Aaron Willey ```First people who exploited this CVE, and showcased it in [HEXACON2023](https://www.youtube.com/watch?v=3Zs45Cl3HfQ)```
+- Seamus Burke & Aaron Willey - First people who exploited this CVE, showcased it at [HEXACON2023](https://www.youtube.com/watch?v=3Zs45Cl3HfQ)
 - [R0rt1z2](https://github.com/R0rt1z2) ```Helped with sniffing this exploit```
 - [kethily-daniel](https://github.com/kethily-daniel) ```Gave me a tool which was exploiting this exact Vulnerability```
 - [halal-beef](https://github.com/halal-beef) ```Script base```
