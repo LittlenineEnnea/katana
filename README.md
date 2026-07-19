@@ -10,6 +10,7 @@ it decreases the stack pointer by 0x60 and there is no stack guard. With enough 
 stack space (0x3000), corrupt memory beyond the stack and make stack buffers overlap with some of the global function
 pointer tables. `secboot_verify_cert_signature` will read the modulus and signature in BIGINT format into stack buffers.
 Since `crypto_ftbl->ModExp` was overwritten by the buffers, `secmath_BIGINT_modexp` will jump into our shellcode from the modulus.
+However, it seems that where I reverse engineered this exploit from, uses a different way to land their shellcode.
 
 More can be found at [HEXACON2023 - Bug Tales : Life and Death in the Sahara](https://www.youtube.com/watch?v=3Zs45Cl3HfQ)
 
@@ -26,7 +27,7 @@ More can be found at [HEXACON2023 - Bug Tales : Life and Death in the Sahara](ht
 ## Usage
 
 ```
-usage: katana.py [-h] -s SOC -e EXPLOIT [-f FIREHOSE]
+usage: katana.py [-h] -s SOC -e EXPLOIT [-f FIREHOSE] [-v] [-pid PID] [-vid VID]
 
 A PoC for the CVE-2021-30327 vulnerability in Qualcomm Sahara
 
@@ -37,6 +38,23 @@ options:
                         Exploit PBL (CVE-2021-30327) with a payload
   -f, --firehose FIREHOSE
                         DevPrg image in case the payload reinitializes Sahara
+  -v, --verbose         Enable to view TX/RX Sahara logs
+  -pid PID              Override USB PID (default 0x9008)
+  -vid VID              Override USB VID (default 0x05C6)
+```
+
+To check if your SoC is actually exploitable, please use `check_vuln.py`.
+
+```
+usage: check_vuln.py [-h] [-v] [-pid PID] [-vid VID]
+
+A PoC for the CVE-2021-30327 vulnerability in Qualcomm Sahara
+
+options:
+  -h, --help     show this help message and exit
+  -v, --verbose  Enable to view TX/RX Sahara logs
+  -pid PID       Override USB PID (default 0x9008)
+  -vid VID       Override USB VID (default 0x05C6)
 ```
 
 ## Credits
