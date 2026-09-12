@@ -142,6 +142,25 @@ class EDLDevice:
             logger.debug(f"\nRX (0x{len(data):x}): {data.hex()}\n")
         return data
 
+    def payload_read(self, size: int = USB_READ_SIZE) -> bytes:
+        try:
+            data = bytes(self.ep_in.read(size, timeout=USB_TIMEOUT_MS))
+        except usb.core.USBTimeoutError:
+            self.crash_notice()
+
+        if self.verbose:
+            logger.debug(f"\nRX (0x{len(data):x}): {data.hex()}\n")
+
+        ascii_region = data[0x0:0x400]
+        ascii_text = ''.join(
+            chr(b) if 32 <= b <= 126 else ''
+            for b in ascii_region
+        )
+
+        logger.debug(f"Payload: {ascii_text}")
+
+        return data
+
     def close(self):
         if self.dev:
             usb.util.dispose_resources(self.dev)

@@ -115,6 +115,7 @@ def main():
             with open(args.exploit, "rb") as f:
                 check_payload = f.read()
             coyote_payload = 1 if b"Coyote-Napali" in check_payload else 0  
+            dump_payload = 1 if b"PBLDump" in check_payload else 0  
 
             if coyote_payload == 1:
                 logger.info("Coyote payload detected")
@@ -165,6 +166,42 @@ def main():
                 # because nothing gets changed.    
                 send_hello_resp(edl, mode, ver_min, SAHARA_MODE_IMAGE_TX_COMPLETE, ver)
                 upload_loader(edl, args.firehose)
+            elif dump_payload == 1: 
+                text = check_payload.decode(errors="ignore")
+                base = None
+                end  = None
+
+                for line in text.splitlines():
+                    if "Base:" in line and "0x" in line:
+                        hexpart = line.split("0x", 1)[1].strip()
+                        if hexpart:
+                            base = int(hexpart, 16)
+
+                    elif "End:" in line and "0x" in line:
+                        hexpart = line.split("0x", 1)[1].strip()
+                        if hexpart:
+                            end = int(hexpart, 16)
+                logger.warning(f"Dumping memory from 0x{base:x} to 0x{end:x}")        
+                dmpsz = end - base
+                total = 0
+                        
+                with open(f"{soc}.bootrom.bin", "wb") as f:
+                    while True:
+                        try:
+                            chunk = edl.read(size=0x400)
+                        except usb.core.USBTimeoutError:
+                            break
+                        
+                        if not chunk:
+                            break
+                        
+                        f.write(chunk)
+                        total += len(chunk)
+                        if total >= dmpsz:
+                            break
+
+                edl.payload_read(size=0x400)               
+                logger.warning(f"Dumped 0x{total:x} bytes to {soc}.bootrom.bin")    
 
             edl.close()
             logger.warning("Exploit finished!")     
