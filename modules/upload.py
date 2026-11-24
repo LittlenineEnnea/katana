@@ -88,8 +88,11 @@ def upload_exploit_payload(edl, path: str, soc):
                 logger.debug("The BootROM is still requesting data, uploading nulls")
             else:
                 exit()    
-            for _ in range(SOC_DATA[soc]["send_null_cnt"]):
-                edl.write(b"\x00" * 0x200)
+            if edl.chunked:
+                for _ in range(SOC_DATA[soc]["send_null_cnt"]):
+                    edl.write(b"\x00" * 0x200)
+            else:
+                edl.write(b"\x00" * (SOC_DATA[soc]["send_null_cnt"] * 0x200))
             edl.write(b"")
             break        
 
@@ -98,8 +101,11 @@ def upload_exploit_payload(edl, path: str, soc):
         raw = payload[offset:offset + size]
         data = raw.ljust(size, b'\x00')
 
-        sent = 0
-        while sent < len(data):
-            chunk = data[sent:sent + CHUNK_SIZE]
-            edl.write(chunk)
-            sent += len(chunk)
+        if edl.chunked:
+            sent = 0
+            while sent < len(data):
+                chunk = data[sent:sent + CHUNK_SIZE]
+                edl.write(chunk)
+                sent += len(chunk)
+        else:
+            edl.write(data)

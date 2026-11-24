@@ -5,10 +5,6 @@
 #
 
 import shutil
-import usb.core
-import usb.util
-import usb.backend.libusb1
-import libusb
 import argparse
 import struct
 import sys
@@ -66,16 +62,20 @@ def main():
     print("A tool to check if your BootROM is vulnerable to CVE-2021-30327")
     parser = argparse.ArgumentParser(description="A PoC for the CVE-2021-30327 vulnerability in Qualcomm Sahara")
     parser.add_argument('-v', '--verbose', help="Enable to view TX/RX Sahara logs", action='store_true')
+    parser.add_argument('--port', type=str, help="Windows COM port, e.g. COM1 (no libusb needed)", required=False)
     parser.add_argument('-pid', help="Override USB PID (default 0x9008)", type=auto_int, default=0x9008, required=False)
     parser.add_argument('-vid', help="Override USB VID (default 0x05C6)", type=auto_int, default=0x05C6, required=False)
 
     args = parser.parse_args() 
 
     EDLDevice.verbose = args.verbose
-    EDLDevice.pid = args.pid
-    EDLDevice.vid = args.vid
 
-    edl = EDLDevice() 
+    if args.port:
+        edl = COMDevice(args.port)
+    else:
+        EDLDevice.pid = args.pid
+        EDLDevice.vid = args.vid
+        edl = EDLDevice()
     if not edl.connect():
         raise SystemExit(1)
     

@@ -27,7 +27,7 @@ More can be found at [HEXACON2023 - Bug Tales : Life and Death in the Sahara](ht
 ## Usage
 
 ```
-usage: katana.py [-h] -s SOC -e EXPLOIT [-f FIREHOSE] [-v] [-pid PID] [-vid VID]
+usage: katana.py [-h] -s SOC -e EXPLOIT [-f FIREHOSE] [-v] [--port PORT] [-pid PID] [-vid VID]
 
 A PoC for the CVE-2021-30327 vulnerability in Qualcomm Sahara
 
@@ -39,6 +39,7 @@ options:
   -f, --firehose FIREHOSE
                         DevPrg image in case the payload reinitializes Sahara
   -v, --verbose         Enable to view TX/RX Sahara logs
+  --port PORT           Windows COM port, e.g. COM1 (no libusb needed)
   -pid PID              Override USB PID (default 0x9008)
   -vid VID              Override USB VID (default 0x05C6)
 ```
@@ -46,13 +47,14 @@ options:
 To check if your SoC is actually exploitable, please use `check_vuln.py`.
 
 ```
-usage: check_vuln.py [-h] [-v] [-pid PID] [-vid VID]
+usage: check_vuln.py [-h] [-v] [--port PORT] [-pid PID] [-vid VID]
 
 A PoC for the CVE-2021-30327 vulnerability in Qualcomm Sahara
 
 options:
   -h, --help     show this help message and exit
   -v, --verbose  Enable to view TX/RX Sahara logs
+  --port PORT    Windows COM port, e.g. COM1 (no libusb needed)
   -pid PID       Override USB PID (default 0x9008)
   -vid VID       Override USB VID (default 0x05C6)
 ```

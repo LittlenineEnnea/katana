@@ -4,18 +4,30 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 
-import usb.core
-import usb.util
-import usb.backend.libusb1
-import libusb
+try:
+    import usb.core
+    import usb.util
+    import usb.backend.libusb1
+    USBTimeout = usb.core.USBTimeoutError
+except ImportError:
+    usb = None
+    USBTimeout = ()
+
+try:
+    import libusb
+except ImportError:
+    pass
+
 import logging
 import sys
 import os
 import time
 from struct import pack
-import katana
 
 logger  = logging.getLogger(__name__)
+
+GENERIC_READ, GENERIC_WRITE = 0x80000000, 0x40000000
+FILE_SHARE_READ, OPEN_EXISTING = 1, 3
 
 EDL_VID = 0x05C6
 EDL_PID = 0x9008
@@ -53,6 +65,7 @@ class EDLDevice:
     verbose = False
     vid = 0x05C6
     pid = 0x9008
+    chunked = True
 
     def __init__(self):
         self.dev    = None
@@ -61,7 +74,11 @@ class EDLDevice:
  
     def connect(self) -> bool:
         logger.info("Waiting for Qualcomm device in Sahara state")
- 
+
+        if usb is None:
+            logger.error("pyusb/libusb not installed. Use --port COMx instead.")
+            return False
+
         backend = usb.backend.libusb1.get_backend()
         if backend is None:
             logger.error(
@@ -130,13 +147,13 @@ class EDLDevice:
 
             return self.ep_out.write(data, timeout=USB_TIMEOUT_MS)
 
-        except usb.core.USBTimeoutError:
+        except USBTimeout:
             self.crash_notice()
  
     def read(self, size: int = USB_READ_SIZE) -> bytes:
         try:
             data = bytes(self.ep_in.read(size, timeout=USB_TIMEOUT_MS))
-        except usb.core.USBTimeoutError:
+        except USBTimeout:
             self.crash_notice()
         if self.verbose == True:
             logger.debug(f"\nRX (0x{len(data):x}): {data.hex()}\n")
@@ -145,7 +162,7 @@ class EDLDevice:
     def payload_read(self, size: int = USB_READ_SIZE) -> bytes:
         try:
             data = bytes(self.ep_in.read(size, timeout=USB_TIMEOUT_MS))
-        except usb.core.USBTimeoutError:
+        except USBTimeout:
             self.crash_notice()
 
         if self.verbose:
@@ -166,6 +183,108 @@ class EDLDevice:
             usb.util.dispose_resources(self.dev)
             self.dev = None
             logger.info("Device released.")
+
+class COMDevice(EDLDevice):
+    """Windows serial transport, for hosts without libusb."""
+
+    chunked = False
+
+    def __init__(self, name, timeout_ms=USB_TIMEOUT_MS):
+        EDLDevice.__init__(self)
+        self.name = name if name.startswith("\\\\.\\") else "\\\\.\\" + name
+        self.timeout_ms = timeout_ms
+        self.h = None
+
+    def connect(self) -> bool:
+        if sys.platform != "win32":
+            logger.error("--port is Windows only")
+            return False
+
+        import ctypes
+        import ctypes.wintypes as wt
+        self.ct, self.wt = ctypes, wt
+
+        k = ctypes.WinDLL("kernel32", use_last_error=True)
+        k.CreateFileA.restype = wt.HANDLE
+        k.CreateFileA.argtypes = [wt.LPCSTR, wt.DWORD, wt.DWORD, ctypes.c_void_p,
+                                  wt.DWORD, wt.DWORD, wt.HANDLE]
+        for fn in (k.ReadFile, k.WriteFile):
+            fn.argtypes = [wt.HANDLE, ctypes.c_void_p, wt.DWORD,
+                           ctypes.POINTER(wt.DWORD), ctypes.c_void_p]
+        k.SetCommTimeouts.argtypes = [wt.HANDLE, ctypes.c_void_p]
+        k.CloseHandle.argtypes = [wt.HANDLE]
+        self.k = k
+
+        logger.info(f"Waiting for {self.name}")
+        tries = 0
+        while True:
+            h = k.CreateFileA(self.name.encode(), GENERIC_READ | GENERIC_WRITE,
+                              FILE_SHARE_READ, None, OPEN_EXISTING, 0, None)
+            if h and h != ctypes.c_void_p(-1).value:
+                break
+            tries += 1
+            if tries % 5 == 0:
+                logger.warning(f"{self.name} is not open yet "
+                               f"(win32 error {ctypes.get_last_error()})")
+            time.sleep(1)
+        self.h = h
+
+        class TIMEOUTS(ctypes.Structure):
+            _fields_ = [("ReadIntervalTimeout", wt.DWORD),
+                        ("ReadTotalTimeoutMultiplier", wt.DWORD),
+                        ("ReadTotalTimeoutConstant", wt.DWORD),
+                        ("WriteTotalTimeoutMultiplier", wt.DWORD),
+                        ("WriteTotalTimeoutConstant", wt.DWORD)]
+        k.SetCommTimeouts(h, ctypes.byref(TIMEOUTS(100, 0, self.timeout_ms, 0, 10000)))
+
+        logger.info("Connected to device")
+        return True
+
+    def write(self, data: bytes) -> int:
+        data = bytes(data)
+        if self.verbose:
+            logger.debug(f"\nTX (0x{len(data):x}): {data.hex()}\n")
+
+        n, sent = self.wt.DWORD(0), 0
+        while sent < len(data):
+            chunk = data[sent:sent + 0x10000]
+            if not self.k.WriteFile(self.h, chunk, len(chunk), self.ct.byref(n), None):
+                self.crash_notice()
+            if n.value == 0:
+                self.crash_notice()
+            sent += n.value
+        return sent
+
+    def read(self, size: int = USB_READ_SIZE) -> bytes:
+        buf, n = self.ct.create_string_buffer(size), self.wt.DWORD(0)
+        if not self.k.ReadFile(self.h, buf, size, self.ct.byref(n), None):
+            self.crash_notice()
+        if n.value == 0:
+            self.crash_notice()
+
+        data = buf.raw[:n.value]
+        if self.verbose:
+            logger.debug(f"\nRX (0x{len(data):x}): {data.hex()}\n")
+        return data
+
+    def payload_read(self, size: int = USB_READ_SIZE) -> bytes:
+        data = self.read(size)
+
+        ascii_text = ''.join(
+            chr(b) if 32 <= b <= 126 else ''
+            for b in data[0x0:0x400]
+        )
+
+        logger.debug(f"Payload: {ascii_text}")
+
+        return data
+
+    def close(self):
+        if self.h:
+            self.k.CloseHandle(self.h)
+            self.h = None
+            logger.info("Device released.")
+
 
 def send_hello_resp(edl, mode, ver_min, switch_mode, version):
     length = 0x30

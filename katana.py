@@ -5,10 +5,6 @@
 #
 
 import shutil
-import usb.core
-import usb.util
-import usb.backend.libusb1
-import libusb
 import argparse
 import struct
 import sys
@@ -62,6 +58,7 @@ def main():
     parser.add_argument('-e', '--exploit', type=str, help="Exploit PBL (CVE-2021-30327) with a payload", required=True)
     parser.add_argument('-f', '--firehose', type=str, help="DevPrg image in case the payload reinitializes Sahara", required=False)
     parser.add_argument('-v', '--verbose', help="Enable to view TX/RX Sahara logs", action='store_true')
+    parser.add_argument('--port', type=str, help="Windows COM port, e.g. COM1 (no libusb needed)", required=False)
     parser.add_argument('-pid', help="Override USB PID (default 0x9008)", type=auto_int, default=0x9008, required=False)
     parser.add_argument('-vid', help="Override USB VID (default 0x05C6)", type=auto_int, default=0x05C6, required=False)
 
@@ -83,10 +80,13 @@ def main():
         logger.debug(f"Selected SoC: {soc}")    
 
     EDLDevice.verbose = args.verbose
-    EDLDevice.pid = args.pid
-    EDLDevice.vid = args.vid
 
-    edl = EDLDevice() 
+    if args.port:
+        edl = COMDevice(args.port)
+    else:
+        EDLDevice.pid = args.pid
+        EDLDevice.vid = args.vid
+        edl = EDLDevice()
     if not edl.connect():
         raise SystemExit(1)
     
@@ -189,7 +189,7 @@ def main():
                     while True:
                         try:
                             chunk = edl.read(size=0x400)
-                        except usb.core.USBTimeoutError:
+                        except USBTimeout:
                             break
                         
                         if not chunk:
